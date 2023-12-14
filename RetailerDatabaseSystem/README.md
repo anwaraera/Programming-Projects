@@ -1,7 +1,13 @@
 # Retailer Database System
 
 ### Project State:
-- Completed database design and functionality. Produces required reports and capabilities.
+- Completed database design and functionality using MySQL. Produces required reports and capabilities.
+
+### Text File Contains MySQL commands:
+- To create all tables necessary
+- To load data into created tables from files
+- To create stored procedures that generate the necessary reports and capabilities
+- To create triggers to automatically log data into tables when necessary
 
 ### The database was designed using the following prompt:
 - MyAwesomeRetailer orders its products from various suppliers, but a product can only have one supplier. MyAwesomeRetailer has many customers. The database should store information about customers and their orders. The database may contain prospective customers (are in the database but may not have placed an order). Customers should have the ability to rate products. There is no restriction for a customer to only rating products they have ordered, and therefore some products may be rated by customers who did not buy them. A customer may have placed or can place many orders. An order may contain several products ordered in various amounts, some of them ordered as multipacks.
