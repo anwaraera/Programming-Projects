@@ -1,0 +1,1420 @@
+# All create table commands:
+
+drop table if exists customer;
+create table customer(
+	customerID int primary key auto_increment,
+	Fname varchar(25),
+	Lname varchar(25),
+	address varchar(30),
+	city varchar(30),
+	state char(2),
+	zip char(5),
+	check (length(zip)=5),
+	check (length(state)=2));
+
+drop table if exists supplier;
+create table supplier(
+	Sname varchar(50) primary key,
+	city varchar(30),
+	zip char(5),
+	check (length(zip)=5));
+
+drop table if exists product;
+create table product(
+	UPC char(5) primary key,
+	Pname varchar(50) not null,
+	Sname varchar(50) not null,
+	check (length(UPC)=5),
+	foreign key (Sname) references supplier (Sname) on delete cascade);
+
+drop table if exists orders;
+create table orders(
+	orderID int primary key auto_increment,
+	orderDate date not null,
+	shipDate date,
+	paymentType enum('VISA', 'MC', 'DISCOVER') not null,
+	CCN char(16) not null,	# possible payment types only have 16 digit card numbers
+	customerID int not null,
+	check (length(CCN)=16),
+	foreign key (customerID) references customer (customerID) on delete cascade);
+
+drop table if exists inventory;
+create table inventory(
+	UPC char(5),
+	price decimal(10,2) not null,
+	pack int,
+	amount int,
+	reorderLevel int not null,
+	check (length(UPC)=5),
+	primary key (UPC, pack),
+	foreign key (UPC) references product (UPC) on delete cascade);
+
+drop table if exists content;
+create table content(
+	orderID int,
+	UPC char(5),
+	quantity int not null,
+	pack int,
+	check (length(UPC)=5),
+	primary key (orderID, UPC, pack),
+	foreign key (orderID) references orders(orderID) on delete cascade,
+	foreign key (UPC, pack) references inventory (UPC, pack) on delete cascade);
+
+drop table if exists rated;
+create table rated(
+	customerID int,
+	UPC char(5),
+	rating int not null,
+	ratingDate date not null,
+	check (length(UPC)=5),
+	primary key (customerID, UPC),
+	foreign key (customerID) references customer (customerID) on delete cascade,
+	foreign key (UPC) references product (UPC) on delete cascade);
+
+drop table if exists prod_category;
+create table prod_category(
+	UPC char(5),
+	category varchar(25),
+	check (length(UPC)=5),
+	primary key (UPC, category),
+	foreign key (UPC) references product (UPC) on delete cascade);
+
+drop table if exists Alert;
+create table Alert(
+	alertID int primary key auto_increment,
+	orderID int,
+	UPC char(5),
+	totalAmount int,
+	alertDate timestamp default current_timestamp,
+	foreign key (orderID, UPC) references content(orderID, UPC) on delete set null);
+
+###############################################################################
+
+# Load Data Commands:
+
+load data local infile '/home/eraanw62/ADB/ProjectData/customer.txt' into table customer fields terminated by ',';
+
+load data local infile '/home/eraanw62/ADB/ProjectData/supplier.txt' into table supplier fields terminated by ',';
+
+load data local infile '/home/eraanw62/ADB/ProjectData/product.txt' into table product fields terminated by ',';
+
+load data local infile '/home/eraanw62/ADB/ProjectData/orders.txt' into table orders fields terminated by ',';
+
+load data local infile '/home/eraanw62/ADB/ProjectData/inventory.txt' into table inventory fields terminated by ',';
+
+load data local infile '/home/eraanw62/ADB/ProjectData/content.txt' into table content fields terminated by ',';
+
+load data local infile '/home/eraanw62/ADB/ProjectData/rated.txt' into table rated fields terminated by ',';
+
+load data local infile '/home/eraanw62/ADB/ProjectData/prod_category.txt' into table prod_category fields terminated by ',';
+
+###############################################################################
+
+# Project Capabilities and Reports:
+
+# a. Ability to view, add, remove and modify customer information.
+
+# FINISHED - in MySQL
+drop procedure if exists Pa;
+delimiter //
+create procedure Pa(in action enum('VIEW','ADD','REMOVE','MODIFY'),
+				in filePath varchar(200),
+				in p_customerID int,
+				in p_fname varchar(25),
+				in p_lname varchar(25),
+				in p_address varchar(30),
+				in p_city varchar(30),
+				in p_state char(2),
+				in p_zip char(5))
+begin
+if action='VIEW' then
+	select * from customer where customerID=p_customerID;
+elseif action='ADD' then
+	if filePath is not null then
+		set @load_query = concat(
+			'load data local infile filePath',
+			' into table customer fields terminated by '','';');
+		prepare stmt from @load_query;
+		execute stmt;
+		deallocate prepare stmt;
+	else
+		insert into customer values (0, p_Fname, p_Lname, p_address, p_city, p_state, p_zip);
+	end if;
+elseif action='REMOVE' then
+	delete from customer where customerID=p_customerID;
+elseif action='MODIFY' then
+	update customer
+	set Fname=p_fname,
+		Lname=p_lname,
+		address=p_address,
+		city=p_city,
+		state=p_state,
+		zip=p_zip
+	where customerID=p_customerID;
+else
+	select 'Invalid action inputted' as Message;
+end if;
+end//
+delimiter ;
+
+call Pa('VIEW', null, 1, null, null, null, null, null, null);
+/*
++------------+--------+----------+---------------+---------+-------+-------+
+| customerID | Fname  | Lname    | address       | city    | state | zip   |
++------------+--------+----------+---------------+---------+-------+-------+
+|          1 | Allene | Iturbide | 1 Central Ave | Portage | WI    | 54481 |
++------------+--------+----------+---------------+---------+-------+-------+
+1 row in set (0.02 sec)
+*/
+
+
+# b. Ability to view, add, remove and modify product information.
+
+# FINISHED - in MySQL
+drop procedure if exists Pb;
+delimiter //
+create procedure Pb(in action enum('VIEW','ADD','REMOVE','MODIFY'),
+				in filePath varchar(200),
+				in p_UPC char(5),
+				in p_Pname varchar(50),
+				in p_Sname varchar(50))
+begin
+if action='VIEW' then
+	select * from product where UPC=p_UPC;
+elseif action='ADD' then
+	if filePath is not null then
+		set @load_query = concat(
+			'load data local infile filePath',
+			' into table product fields terminated by '','';');
+		prepare stmt from @load_query;
+		execute stmt;
+		deallocate prepare stmt;	
+	else
+		insert into product values (p_UPC, p_Pname, p_Sname);
+	end if;
+elseif action='REMOVE' then
+	delete from product where UPC=p_UPC;
+elseif action='MODIFY' then
+	update product
+	set Pname=p_Pname,
+		Sname=p_Sname
+	where UPC=p_UPC;
+else
+	select 'Invalid action inputted' as Message;
+end if;
+end//
+delimiter ;
+
+call Pb('MODIFY', null, '00001', 'something', 'Melmarc Products Inc.');
+/*
+select * from product where UPC='00001';
++-------+-----------+-----------------------+
+| UPC   | Pname     | Sname                 |
++-------+-----------+-----------------------+
+| 00001 | something | Melmarc Products Inc. |
++-------+-----------+-----------------------+
+1 row in set (0.00 sec)
+*/
+
+# c. Ability to view, add, remove and modify supplier information.
+
+# FINISHED - in MySQL
+drop procedure if exists Pc;
+delimiter //
+create procedure Pc(in action enum('VIEW','ADD','REMOVE','MODIFY'),
+				in filePath varchar(200),
+				in p_Sname varchar(50),
+				in p_city varchar(30),
+				in p_zip char(5))
+begin
+if action='VIEW' then
+	select * from supplier where Sname=p_Sname;
+elseif action='ADD' then
+	if filePath is not null then
+		set @load_query = concat(
+			'load data local infile filePath',
+			' into table supplier fields terminated by '','';');
+		prepare stmt from @load_query;
+		execute stmt;
+		deallocate prepare stmt;
+	else
+		insert into supplier values (p_Sname, p_city, p_zip);
+	end if;
+elseif action='REMOVE' thens
+	delete from supplier where Sname=p_Sname;
+elseif action='MODIFY' then
+	update supplier
+	set city=p_city,
+	    zip=p_zip
+	where Sname=p_Sname;
+else
+	select 'Invalid action inputted' as Message;
+end if;
+end//
+delimiter ;
+
+# d. Ability to view inventory and modify inventory (as a result of re-ordering).
+
+# FINISHED
+drop procedure if exists Pd;
+delimiter //
+create procedure Pd(in action enum('VIEW','MODIFY'),
+				 in p_UPC char(5),
+				 in p_price decimal(10,2),
+				 in p_pack int,
+				 in p_amount int,
+				 in p_reorderLevel int)
+begin
+if action='VIEW' then
+	select * from inventory where UPC=p_UPC and pack=p_pack;
+elseif action='MODIFY' then
+	update inventory
+	set price=p_price,
+	    amount=p_amount,
+	    reorderLevel=p_reorderLevel
+	where UPC=p_UPC and pack=p_pack;
+else
+	select 'Invalid action inputted' as Message;
+end if;
+end//
+delimiter ;
+
+call Pd('VIEW', '00001', null, 1, null, null);
+/*
++-------+--------+------+--------+--------------+
+| UPC   | price  | pack | amount | reorderLevel |
++-------+--------+------+--------+--------------+
+| 00001 | 399.99 |    1 |     50 |           10 |
++-------+--------+------+--------+--------------+
+1 row in set (0.01 sec)
+*/
+
+# e. Ability to place an order.
+
+# FINISHED - in MySQL
+/*I wasn't entirely sure of how you wanted us to add the content of the order when an was placed, but I used the json format as a parameter for the contents of the order as it is something I learned about to complete a project in another class*/
+drop procedure if exists Pe;
+delimiter //
+create procedure Pe(in p_paymentType enum('VISA', 'MC', 'DISCOVER'),
+		    in p_CCN char(16),
+		    in p_customerID int,
+		    in orderContent JSON)
+begin
+insert into orders (orderID, orderDate, paymentType, CCN, customerID)
+values (0, current_date(), p_paymentType, p_CCN, p_customerID);
+
+
+insert into content (orderID, UPC, quantity, pack)
+select last_insert_id(), orderItems.UPC, orderItems.quantity, orderItems.pack
+			from json_table(orderContent, '$[*]' 
+			columns(UPC char(5) path '$.UPC',
+			quantity int path '$.quantity',
+			pack int path '$.pack')) as orderItems;
+end//
+delimiter ;
+
+# Test call:
+# call Pe('VISA', '1111111111111111', 1, '[{"UPC": "00001", "quantity": 1, "pack": 1}]');
+
+# Queries to check order and content was correctly added:
+/*
+select * from orders where orderID=last_insert_id();
++---------+------------+----------+-------------+------------------+------------+
+| orderID | orderDate  | shipDate | paymentType | CCN              | customerID |
++---------+------------+----------+-------------+------------------+------------+
+|      91 | 2023-12-07 | NULL     | VISA        | 1111111111111111 |          1 |
++---------+------------+----------+-------------+------------------+------------+
+1 row in set (0.00 sec)
+
+select * from content where orderID=91;
++---------+-------+----------+------+
+| orderID | UPC   | quantity | pack |
++---------+-------+----------+------+
+|      91 | 00001 |        1 |    1 |
++---------+-------+----------+------+
+1 row in set (0.00 sec)
+*/
+
+
+# f. Ability to track an order [if it was shipped(date) or not].
+
+# FINISHED - in MySQL
+drop procedure if exists Pf;
+delimiter //
+create procedure Pf(in p_orderID int)
+begin
+declare shippedDate date;
+select shipDate into shippedDate
+from orders
+where orderID=p_orderID;
+if shippedDate is null then
+	select 'Not yet shipped' as Status;
+else
+	select concat('Shipped on ', shippedDate) as Status;
+end if;
+end//
+delimiter ;
+
+# Test call:
+# call Pf(20);
+
+/*
++-----------------------+
+| Status                |
++-----------------------+
+| Shipped on 2023-03-20 |
++-----------------------+
+1 row in set (0.00 sec)
+
+Query OK, 0 rows affected (0.00 sec)
+*/
+
+# g. Ability to rate products.
+
+# FINISHED -in MySQL
+drop procedure if exists Pg;
+delimiter //
+create procedure Pg(in p_UPC char(5),
+		    in p_customerID int,
+		    in p_rating int)
+begin
+insert into rated
+values (p_customerID, p_UPC, p_rating, current_date());
+end//
+delimiter ;
+
+# call Pg('00001', 31, 4);
+
+# Queries to check rating was added:
+/*
+select * from rated where UPC='00001' and customerID=31;
++------------+-------+--------+------------+
+| customerID | UPC   | rating | ratingDate |
++------------+-------+--------+------------+
+|         31 | 00001 |      4 | 2023-12-07 |
++------------+-------+--------+------------+
+1 row in set (0.01 sec)
+*/
+
+# h. List of prospective customers (customers in the database that have not placed an item).
+
+# FINISHED - in MySQL
+drop procedure if exists Ph;
+delimiter //
+create procedure Ph()
+begin
+select customerID, Fname, Lname
+from customer
+where customerID not in (select customerID
+			 from orders);
+end//
+delimiter ;
+
+call Ph();
+/*
++------------+---------+-------------+
+| customerID | Fname   | Lname       |
++------------+---------+-------------+
+|          7 | Joanne  | Mathieu     |
+|         18 | Manito  | Kohnert     |
+|         21 | Jolene  | Ostolaza    |
+|         31 | Sunny   | Kownacki    |
+|         33 | Lilinor | Paskin      |
+|         43 | Luis    | Jurney      |
+|         44 | Rasheed | Sayaphon    |
+|         45 | Renea   | Monterrubio |
+|         46 | Carmelo | Lindall     |
++------------+---------+-------------+
+9 rows in set (0.02 sec)
+*/
+
+	
+# i. List of customers who have not been “active enough”(*) to be offered special incentives. #
+
+# I realized when going over this for the presentation, I have misunderstood the question and this query actually lists the customers who HAVE BEEN active, instead of the customers who have not been active. To fix, change '>=' to '<' and '>=' to '<'.
+
+# FINISHED - in MySQL
+drop procedure if exists Pi;
+delimiter //
+create procedure Pi(in recentOrderThres int,
+		    in orderNumThres int, 
+		    in prodNumThres int)
+begin
+select customerID
+from customer
+where customerID in (select o.customerID
+		     from orders o
+		     where datediff(current_date(), o.orderDate) > recentOrderThres
+			and (select count(orderID)
+			     from orders
+			     where customerID=o.customerID) < orderNumThres
+			and orderID in (select orderID
+					from content
+					group by orderID
+					having sum(quantity) < prodNumThres));
+end//
+delimiter ;
+
+call Pi(10,4,5);
+/*
++------------+
+| customerID |
++------------+
+|          2 |
+|          5 |
+|         11 |
+|         15 |
+|         19 |
+|         20 |
+|         22 |
+|         23 |
+|         30 |
++------------+
+9 rows in set (0.00 sec)
+*/
+
+# j. For all products, the unit price for each pack that is the inventory.
+
+# FINISHED - in MySQL
+drop procedure if exists Pj;
+delimiter //
+create procedure Pj()
+begin
+select UPC, (price/pack) 'unit price'
+from inventory;
+end//
+delimiter ;
+
+call Pj();
+/*
++-------+-------------+
+| UPC   | unit price  |
++-------+-------------+
+| 00001 |  399.990000 |
+| 00002 |   59.990000 |
+| 00002 |   49.995000 |
+| 00003 |   19.990000 |
+| 00003 |   19.998000 |
+| 00003 |   19.099000 |
+| 00003 |   16.000000 |
+| 00004 |   99.990000 |
+| 00005 |  120.000000 |
+| 00006 |    9.990000 |
+| 00007 | 1099.990000 |
+| 00008 |  124.990000 |
+| 00009 |   39.990000 |
+| 00010 |   44.990000 |
+| 00011 |   74.990000 |
+| 00012 |   59.990000 |
+| 00013 |  349.990000 |
+| 00014 |  120.000000 |
+| 00015 |   19.990000 |
+| 00016 |    8.000000 |
+| 00016 |   19.333333 |
+| 00016 |   14.500000 |
+| 00017 |   50.000000 |
+| 00018 |   65.000000 |
+| 00019 |   19.000000 |
+| 00020 |    9.990000 |
+| 00020 |    9.990000 |
+| 00020 |    7.998000 |
+| 00021 |   35.000000 |
+| 00022 |   39.000000 |
+| 00023 |   60.000000 |
+| 00024 |   55.000000 |
+| 00025 |   25.000000 |
+| 00026 |  300.000000 |
+| 00027 |    4.000000 |
+| 00027 |    4.000000 |
+| 00027 |    3.000000 |
+| 00028 | 2000.000000 |
+| 00029 |   22.000000 |
+| 00030 |  600.000000 |
+| 00031 |   50.000000 |
+| 00032 |  350.000000 |
+| 00033 |   15.000000 |
+| 00034 |   34.990000 |
+| 00035 |    5.000000 |
+| 00036 |    0.500000 |
+| 00036 |    0.375000 |
+| 00036 |    0.300000 |
+| 00036 |    0.250000 |
+| 00037 |  250.000000 |
+| 00038 |    7.990000 |
+| 00039 |   50.000000 |
+| 00040 |  100.000000 |
+| 00041 |  100.000000 |
+| 00042 |    5.000000 |
+| 00042 |    3.750000 |
+| 00042 |    3.200000 |
+| 00043 |  100.000000 |
+| 00044 | 4999.990000 |
+| 00045 |   50.000000 |
+| 00046 |   10.000000 |
+| 00047 |   50.000000 |
+| 00048 |  100.000000 |
+| 00049 |  150.000000 |
+| 00050 |   50.000000 |
+| 00050 |   50.000000 |
++-------+-------------+
+66 rows in set (0.01 sec)
+*/
+
+# k. List of orders that have not been shipped yet.
+
+# FINISHED - in MySQL
+drop procedure if exists Pk;
+delimiter //
+create procedure Pk()
+begin
+select orderID
+from orders
+where shipDate is null;
+end//
+delimiter ;
+
+call Pk();
+/*
++---------+
+| orderID |
++---------+
+|       3 |
+|      11 |
+|      14 |
+|      17 |
+|      23 |
+|      30 |
+|      33 |
+|      34 |
+|      35 |
+|      37 |
+|      44 |
+|      46 |
+|      49 |
+|      52 |
+|      54 |
+|      58 |
+|      63 |
+|      68 |
+|      84 |
+|      87 |
+|      89 |
++---------+
+21 rows in set (0.00 sec)
+*/
+
+# l. List of orders that could be shipped (all items in order are in stock in the ordered amounts) in the order in which they have been placed.
+
+# Explanation of HAVING clause: checks if the count of items in the group is equal to the sum of the conditional, which checks if there is enough inventory for each item in the order. If the inventory has >= what was ordered, then '1' is added into the sum, but if not, then 0 is added to the sum. If the sum is equal to the number of items in the group, then that order is ready to be shipped.
+
+# FINISHED - in MySQL
+drop procedure if exists Pl;
+delimiter //
+create procedure Pl()
+begin
+select orderID, orderDate
+from (orders join content using (orderID)) left join inventory using (UPC,pack)
+where shipDate is null
+group by orderID, orderDate
+having count(*)=sum(case
+			when inventory.amount>=content.quantity then 1
+			else 0
+			end)
+order by orderDate;
+end//
+delimiter ;
+
+call Pl();
+/*
++---------+------------+
+| orderID | orderDate  |
++---------+------------+
+|      34 | 2023-10-31 |
+|      89 | 2023-11-15 |
+|      11 | 2023-11-27 |
+|      87 | 2023-11-27 |
+|      14 | 2023-11-28 |
+|      17 | 2023-11-28 |
+|      52 | 2023-11-28 |
+|      68 | 2023-11-28 |
+|      54 | 2023-11-29 |
+|      33 | 2023-11-30 |
+|      49 | 2023-11-30 |
+|      58 | 2023-11-30 |
++---------+------------+
+12 rows in set (0.00 sec)
+*/
+
+# m. List of products and pack options whose inventory is at or below reorder level.
+
+# FINISHED - in MySQL
+drop procedure if exists Pm;
+delimiter //
+create procedure Pm()
+begin
+select UPC, pack, amount, reorderLevel
+from inventory 
+where amount<=reorderLevel;
+end//
+delimiter ;
+
+call Pm();
+/*
++-------+------+--------+--------------+
+| UPC   | pack | amount | reorderLevel |
++-------+------+--------+--------------+
+| 00002 |    1 |      6 |           30 |
+| 00002 |    2 |      2 |           20 |
+| 00003 |    1 |      3 |           75 |
+| 00003 |    5 |      1 |           50 |
+| 00003 |   10 |      0 |           20 |
+| 00008 |    1 |      3 |           10 |
+| 00010 |    1 |     10 |           15 |
+| 00015 |    1 |      0 |           30 |
+| 00016 |    1 |      0 |          150 |
+| 00016 |    4 |      0 |           50 |
+| 00017 |    1 |      5 |           10 |
+| 00020 |    2 |      0 |            5 |
+| 00022 |    1 |     20 |           50 |
+| 00025 |    1 |     12 |           15 |
+| 00027 |    1 |     20 |           50 |
+| 00027 |   10 |      0 |           10 |
+| 00029 |    1 |      0 |           20 |
+| 00033 |    1 |     30 |          150 |
+| 00035 |    1 |     90 |          250 |
+| 00036 |    1 |     50 |         2000 |
+| 00036 |    2 |     23 |          100 |
+| 00040 |    1 |     10 |           25 |
+| 00042 |    1 |      5 |           50 |
+| 00042 |    4 |      0 |           20 |
+| 00042 |    5 |     14 |           20 |
+| 00045 |    1 |     20 |           20 |
+| 00046 |    1 |     13 |           20 |
+| 00048 |    1 |     14 |           15 |
++-------+------+--------+--------------+
+28 rows in set (0.00 sec)
+*/
+
+# n. List of customers who have rated at least one product that they did not buy.
+
+# FINISHED - in MySQL
+drop procedure if exists Pn;                                      
+delimiter //
+create procedure Pn()
+begin
+select customerID
+from customer
+where customerID in 
+	(select customerID
+	 from rated
+	 where customerID not in 
+		(select customerID
+		 from orders
+		 where orderID in 
+			(select orderID
+			 from content
+			 where content.UPC=rated.UPC)));
+end//
+delimiter ;
+
+call Pn();
+/*
++------------+
+| customerID |
++------------+
+|          1 |
+|          2 |
+|          3 |
+|          4 |
+|          5 |
+|          6 |
+|          7 |
+|          8 |
+|          9 |
+|         10 |
+|         11 |
+|         12 |
+|         13 |
+|         14 |
+|         15 |
+|         16 |
+|         17 |
+|         18 |
+|         19 |
+|         20 |
+|         21 |
+|         22 |
+|         23 |
+|         24 |
+|         26 |
+|         27 |
+|         28 |
+|         29 |
+|         30 |
+|         31 |
+|         32 |
+|         33 |
+|         34 |
+|         35 |
+|         36 |
+|         37 |
+|         38 |
+|         39 |
+|         40 |
+|         41 |
+|         42 |
+|         43 |
+|         44 |
+|         45 |
+|         46 |
+|         47 |
+|         48 |
+|         50 |
++------------+
+48 rows in set (0.00 sec)
+*/
+
+# o. List of customers who have only rated products that they did not buy.
+
+# FINISHED - in MySQL
+drop procedure if exists Po;	
+delimiter //
+create procedure Po()
+begin
+select distinct customerID
+from rated left join (select customerID, UPC 
+	 	      from orders join content using (orderID)) as 
+	custOrders using (customerID, UPC)
+where custOrders.customerID is null; 
+end//
+delimiter ;
+
+call Po();
+/*
++------------+
+| customerID |
++------------+
+|          1 |
+|          4 |
+|          8 |
+|         12 |
+|         13 |
+|         15 |
+|         21 |
+|         31 |
+|          3 |
+|         16 |
+|         22 |
+|         43 |
+|         10 |
+|         11 |
+|         17 |
+|         23 |
+|          5 |
+|          7 |
+|         18 |
+|         24 |
+|         14 |
+|         19 |
+|          2 |
+|         20 |
+|          6 |
+|         42 |
+|         39 |
+|         41 |
+|         40 |
+|         44 |
+|         46 |
+|         48 |
+|         50 |
+|         47 |
+|         26 |
+|         32 |
+|         33 |
+|         34 |
+|         35 |
+|         36 |
+|         37 |
+|         38 |
+|         27 |
+|         28 |
+|         29 |
+|         30 |
+|         45 |
+|          9 |
++------------+
+48 rows in set (0.00 sec)
+*/
+
+# p. List of customers who did not rate any products they bought.
+
+# FINISHED - in MySQL
+drop procedure if exists Pp;
+delimiter //
+create procedure Pp()
+begin
+select customerID
+from customer
+where customerID not in (select customerID from rated)	#customers with no ratings included
+	or customerID in 
+		(select customerID
+		from orders
+		where orderID in 
+			(select orderID
+			from content
+			where UPC not in 
+				(select UPC
+				from rated
+				where customerID=customer.customerID)));
+end//
+delimiter ;
+
+call Pp();
+/*
++------------+
+| customerID |
++------------+
+|          1 |
+|          2 |
+|          3 |
+|          4 |
+|          5 |
+|          6 |
+|          8 |
+|          9 |
+|         10 |
+|         11 |
+|         12 |
+|         13 |
+|         14 |
+|         15 |
+|         16 |
+|         17 |
+|         19 |
+|         20 |
+|         22 |
+|         23 |
+|         24 |
+|         25 |
+|         26 |
+|         27 |
+|         28 |
+|         29 |
+|         30 |
+|         32 |
+|         34 |
+|         35 |
+|         36 |
+|         37 |
+|         38 |
+|         39 |
+|         40 |
+|         41 |
+|         42 |
+|         47 |
+|         48 |
+|         49 |
+|         50 |
++------------+
+41 rows in set (0.02 sec)
+*/
+
+# q. List of states where the raters live ordered from most-frequent-rater state to least-frequent-rater state.
+# Realized I also did this one wrong when going over it for the presentation. The GROUP BY should be 'state', not 'customerID'.
+
+# FINISHED - in MySQL
+drop procedure if exists Pq;
+delimiter //
+create procedure Pq()
+begin
+select state, count(rating)
+from customer right join rated using (customerID)
+group by state
+order by count(rating) desc;
+end//
+delimiter ;
+
+call Pq();
+/*
++-------+---------------+
+| state | count(rating) |
++-------+---------------+
+| CA    |           106 |
+| NJ    |            42 |
+| OR    |            19 |
+| TX    |            18 |
+| MN    |            18 |
+| PA    |            15 |
+| FL    |            14 |
+| MA    |            13 |
+| ND    |            12 |
+| WI    |            11 |
+| SD    |             9 |
+| NE    |             9 |
+| MD    |             9 |
+| MO    |             9 |
+| VA    |             9 |
+| NC    |             9 |
+| OH    |             8 |
+| RI    |             6 |
+| TN    |             5 |
+| AK    |             4 |
+| WV    |             3 |
+| NY    |             3 |
+| GA    |             3 |
+| MI    |             3 |
+| AZ    |             2 |
++-------+---------------+
+25 rows in set (0.01 sec)
+*/	
+
+# r. List of “worst selling” (*) products, which might be offered as specials. #
+
+# FINISHED - in MySQL
+drop procedure if exists Pr;
+delimiter //
+create procedure Pr(in custThres int,
+		    in ordersThres int,
+		    in quantityThres int)
+select UPC, Pname
+from (product left join content using (UPC)) left join orders using (orderID)
+group by UPC, Pname
+having count(distinct customerID) <= custThres
+	and count(orderID) <= ordersThres
+	and sum(quantity) <= quantityThres;
+end//
+delimiter ;
+
+call Pr(10,5,10);
+/*
++-------+--------------------+
+| UPC   | Pname              |
++-------+--------------------+
+| 00029 | Ventilation Filter |
+| 00043 | Leap Frog Tablet   |
++-------+--------------------+
+2 rows in set (0.01 sec)
+*/
+
+call Pr(15,10,20);
+/*
++-------+--------------------------+
+| UPC   | Pname                    |
++-------+--------------------------+
+| 00006 | No More Stink Socks      |
+| 00011 | Job Hunter Discount Suit |
+| 00015 | Puzzle Blocks for Kids   |
+| 00021 | Mini Acoustic Guitar     |
+| 00029 | Ventilation Filter       |
+| 00043 | Leap Frog Tablet         |
++-------+--------------------------+
+6 rows in set (0.00 sec)
+*/
+
+# s. List of top highly rated products(**). #
+# For the rating threshold for these 4 procedure, I used the avg of the ratings to compare to the threshold
+
+# Ps - uses number of ratings and number of orders in which it was sold
+# FINISHED - in MySQL
+drop procedure if exists Ps;
+delimiter //
+create procedure Ps(in ratingThres int,
+		    in orderThres int)
+begin
+select UPC, Pname
+from (product left join rated using (UPC)) left join content using (UPC)
+group by UPC, Pname
+having avg(rating)>=ratingThres
+	and count(distinct orderID)>=orderThres
+order by avg(rating) desc;
+end//
+delimiter ;
+
+call Ps(4,3);
+/*
++-------+--------------------------+
+| UPC   | Pname                    |
++-------+--------------------------+
+| 00040 | Basic Telescope          |
+| 00045 | Kids Baking Set          |
+| 00014 | DG Camera                |
+| 00019 | Summer Dress             |
+| 00049 | Babys First Game Console |
+| 00050 | Baby Learns Java         |
++-------+--------------------------+
+6 rows in set (0.00 sec)
+*/
+
+# Ps1 - uses number of ratings and highest number of ratings of any product
+# FINISHED - in MySQL
+drop procedure if exists Ps1;
+delimiter //
+create procedure Ps1(in ratingThres int)
+begin
+with ratingCounts(allCounts) as (select count(*)
+				 from rated
+				 group by UPC)
+select UPC, Pname
+from (product left join rated using (UPC)) left join content using (UPC)
+group by UPC, Pname
+having avg(rating)>=ratingThres
+	and count(rating) >= (select max(allCounts)
+			     from ratingCounts);
+end//
+delimiter ;
+
+call Ps1(4);
+/*
++-------+--------------------------+
+| UPC   | Pname                    |
++-------+--------------------------+
+| 00014 | DG Camera                |
+| 00019 | Summer Dress             |
+| 00040 | Basic Telescope          |
+| 00045 | Kids Baking Set          |
+| 00049 | Babys First Game Console |
+| 00050 | Baby Learns Java         |
++-------+--------------------------+
+6 rows in set (0.01 sec)
+*/
+
+# Ps2 - uses number of ratings, number of customers, and number of days since first rating
+# FINISHED -in MySQL
+drop procedure if exists Ps2;
+delimiter //
+create procedure Ps2(in ratingThres int,
+		     in custThres int,
+		     in daysThres int)
+begin
+select UPC, Pname
+from product join rated using (UPC)
+group by UPC, Pname
+having avg(rating) >= ratingThres
+	and count(distinct customerID) >= custThres
+	and datediff(current_date(), min(ratingDate)) >= daysThres;
+end//
+delimiter ;
+
+call Ps2(4,2,3);
+/*
++-------+--------------------------+
+| UPC   | Pname                    |
++-------+--------------------------+
+| 00014 | DG Camera                |
+| 00019 | Summer Dress             |
+| 00040 | Basic Telescope          |
+| 00045 | Kids Baking Set          |
+| 00049 | Babys First Game Console |
+| 00050 | Baby Learns Java         |
++-------+--------------------------+
+6 rows in set (0.00 sec)
+*/
+
+# Ps3 - uses number of ratings and the ratings over an average threshold of ratings
+# FINISHED - in MySQL
+drop procedure if exists Ps3;
+delimiter //
+create procedure Ps3(in ratingThres int,
+		    in ratingCountThres int)
+begin
+select UPC, Pname
+from rated join product using (UPC)
+group by UPC, Pname
+having avg(rating)>=ratingThres
+	and count(rating)>=ratingCountThres;
+end//
+delimiter ;
+
+call Ps3(4,3);
+/*
++-------+--------------------------+
+| UPC   | Pname                    |
++-------+--------------------------+
+| 00014 | DG Camera                |
+| 00019 | Summer Dress             |
+| 00040 | Basic Telescope          |
+| 00045 | Kids Baking Set          |
+| 00049 | Babys First Game Console |
+| 00050 | Baby Learns Java         |
++-------+--------------------------+
+6 rows in set (0.00 sec)
+*/
+
+# t. List of top x% highly rated products(**). # (Ex: if x=10 -top 10% where x is a parameter)
+
+#????????? can't get the limit to work
+drop procedure if exists Pt;
+delimiter //
+create procedure Pt(in topPercent int)
+begin
+select UPC, Pname
+from rated join product using (UPC)
+group by UPC, Pname
+having avg(rating)>=4
+	and count(rating)>=3
+order by avg(rating) desc
+limit (totRowCount/topPercent);
+end//
+delimiter ;
+
+# u. List of items that have been rated by at least one buyer before they bought them. No duplication.
+
+# FINISHED - in MySQL
+drop procedure if exists Pu;
+delimiter //
+create procedure Pu()
+begin
+select distinct UPC
+from (rated join orders using (customerID)) join content using (orderID,UPC)
+where ratingDate < orderDate;
+end//
+delimiter ;
+
+call Pu();
+/*
++-------+
+| UPC   |
++-------+
+| 00005 |
+| 00047 |
+| 00039 |
+| 00044 |
+| 00050 |
+| 00048 |
+| 00042 |
+| 00033 |
+| 00034 |
+| 00035 |
+| 00036 |
+| 00030 |
+| 00027 |
+| 00045 |
+| 00006 |
+| 00012 |
+| 00013 |
+| 00028 |
+| 00022 |
+| 00031 |
+| 00009 |
+| 00019 |
+| 00046 |
+| 00037 |
+| 00024 |
++-------+
+25 rows in set (0.01 sec)
+*/
+
+# v. List of orders that were shipped fast.#
+
+# FINISHED - in MySQL
+drop procedure if exists Pv;
+delimiter //
+create procedure Pv(in timeTaken int)
+begin
+select orderID, orderDate, shipDate
+from orders
+where shipDate is not null
+	and datediff(shipDate, orderDate)<=timeTaken;
+end//
+delimiter ;
+
+call Pv(1);
+/*
++---------+------------+------------+
+| orderID | orderDate  | shipDate   |
++---------+------------+------------+
+|       7 | 2023-02-03 | 2023-02-04 |
+|       9 | 2023-02-09 | 2023-02-10 |
+|      10 | 2023-02-10 | 2023-02-11 |
+|      13 | 2023-02-18 | 2023-02-19 |
+|      15 | 2023-02-20 | 2023-02-21 |
+|      16 | 2023-03-01 | 2023-03-02 |
+|      26 | 2023-04-01 | 2023-04-02 |
+|      27 | 2023-04-01 | 2023-04-02 |
+|      28 | 2023-04-01 | 2023-04-02 |
+|      29 | 2023-04-01 | 2023-04-02 |
+|      53 | 2021-04-17 | 2021-04-18 |
+|      55 | 2021-04-30 | 2021-05-01 |
+|      61 | 2021-11-06 | 2021-11-06 |
+|      62 | 2022-01-03 | 2022-01-04 |
+|      86 | 2022-04-14 | 2022-04-15 |
+|      88 | 2022-04-18 | 2022-04-19 |
+|      90 | 2022-04-19 | 2022-04-19 |
++---------+------------+------------+
+17 rows in set (0.00 sec)
+*/
+
+# w. List of bestselling (*) products. #
+
+# FINISHED - in MySQL
+drop procedure if exists Pw;
+delimiter //
+create procedure Pw(in custThres int,
+		    in ordersThres int,
+		    in quantityThres int)
+select UPC, Pname
+from (product left join content using (UPC)) left join orders using (orderID)
+group by UPC, Pname
+having count(distinct customerID) >= custThres
+	and count(orderID) >= ordersThres
+	and sum(quantity) >= quantityThres;
+end//
+delimiter ;
+
+call Pw(5, 8, 20);
+/*
++-------+---------------------------+
+| UPC   | Pname                     |
++-------+---------------------------+
+| 00001 | Xtreme Graphics           |
+| 00003 | Happy Smiles Face Paints  |
+| 00008 | Bass Booster Subwoofers   |
+| 00010 | Sunshine Yellow           |
+| 00012 | Head Secure Hard Hat      |
+| 00014 | DG Camera                 |
+| 00016 | Chef Gourmet Pasta        |
+| 00017 | Portable Motion Detector  |
+| 00019 | Summer Dress              |
+| 00023 | Car Stereo System         |
+| 00027 | Printer Paper             |
+| 00028 | AC Unit                   |
+| 00031 | Sunglasses                |
+| 00033 | Digital Clock             |
+| 00035 | Transformer Action Figure |
+| 00036 | Star Wars Sticker         |
+| 00037 | Smartwatch                |
+| 00038 | Winnie the Pooh Book      |
+| 00044 | Robot Chef                |
++-------+---------------------------+
+19 rows in set (0.00 sec)
+*/
+
+# x. A suggested list of products for this specific (#) customer. (*)
+
+# FINISHED -in MySQL
+drop procedure if exists Px;
+delimiter //
+create procedure Px(in p_customerID int)
+begin
+select distinct UPC, Pname
+from product join prod_category using (UPC)
+where category in (select category
+		   from prod_category
+		   where UPC in
+			(select UPC
+			 from content
+			 where orderID in
+				(select orderID
+				 from orders
+				 where customerID=p_customerID)))
+	and UPC not in (select UPC
+			from content
+			where orderID in (select orderID
+					  from orders 
+					  where customerID=p_customerID))
+	and UPC in (select UPC
+		    from rated 
+		    group by UPC
+		    having avg(rating)>=4);
+end//
+delimiter ;
+
+call Px(10);
+/*
++-------+--------------------------+
+| UPC   | Pname                    |
++-------+--------------------------+
+| 00014 | DG Camera                |
+| 00045 | Kids Baking Set          |
+| 00049 | Babys First Game Console |
+| 00050 | Baby Learns Java         |
++-------+--------------------------+
+4 rows in set (0.01 sec)
+*/
+
+call Px(32);
+/*
++-------+--------------------------+
+| UPC   | Pname                    |
++-------+--------------------------+
+| 00014 | DG Camera                |
+| 00019 | Summer Dress             |
+| 00040 | Basic Telescope          |
+| 00045 | Kids Baking Set          |
+| 00049 | Babys First Game Console |
+| 00050 | Baby Learns Java         |
++-------+--------------------------+
+6 rows in set (0.03 sec)
+*/
+
+# y. Set up an Alert table and a trigger that logs new orders for amounts larger than 30 of the same product units (note that packs may order multiple amounts of a certain product – an order containing 3 packs of 10 units each should trigger a log in the Alert table).
+
+# Alert table creation is in the create tables commands section
+
+# FINISHED - in MySQL
+drop trigger if exists Py;
+delimiter //
+create trigger Py after insert on content
+for each row
+begin
+declare totalUnits int;
+select sum(quantity*pack) into totalUnits
+from content 
+where orderID=new.orderID and UPC=new.UPC;
+
+if (totalUnits>=30) then
+	insert into Alert (alertID, orderID, UPC, totalAmount) 
+	values (0, new.orderID, new.UPC, totalUnits);
+end if;
+end//
+delimiter ;
+
+# Test query - Adding an order containing 30 of the same product units:
+# Using previous stored procedure to place an order
+# call Pe('VISA', '1111111111111111', 1, '[{"UPC": "00036", "quantity": 3, "pack": 10}]');
+
+# Queries to check Alert table:
+/*
+select * from Alert;
++---------+---------+-------+-------------+---------------------+
+| alertID | orderID | UPC   | totalAmount | alertDate           |
++---------+---------+-------+-------------+---------------------+
+|       1 |      93 | 00036 |          30 | 2023-12-07 20:30:30 |
++---------+---------+-------+-------------+---------------------+
+1 row in set (0.00 sec)
+*/
+
+
+# z. Create a trigger of our own choosing that is not related to the trigger in y. or is using the Alert table. Make sure to document it thoroughly.
+
+# This trigger will check if a customer orders more than 50 of the same item (quantity>50). If the quantity is greater than 50, the restriction is placed, and a max of 50 quantity is ordered.
+
+drop trigger if exists Pz;
+delimiter //
+create trigger Pz before insert on content
+for each row
+begin
+if new.quantity>50 then set new.quantity=50;
+end if;
+end//
+delimiter ;
+
+# Test query - Adding to content with quantity greater than 50:
+# insert into content values (1, '00001', 51, 1);
+
+# Checking content table to see if it restricted and updated with <50 quantity:
+/*
+select * from content where orderID=1;
++---------+-------+----------+------+
+| orderID | UPC   | quantity | pack |
++---------+-------+----------+------+
+|       1 | 00001 |       50 |    1 |
+|       1 | 00019 |        7 |    1 |
+|       1 | 00021 |        6 |    1 |
+|       1 | 00036 |        3 |    2 |
+|       1 | 00036 |        1 |    5 |
+|       1 | 00040 |        3 |    1 |
++---------+-------+----------+------+
+6 rows in set (0.00 sec)
+*/
+
