@@ -1,1 +1,15 @@
 # Programming-Projects
+- Sudoku Solver:
+  - Independent Java project
+  - Uses Sat4J solver
+- SAT Solver:
+  - Independent Java project
+- Retailer Database System
+  - Independent MySQL project
+  - Designed database system to satistfy an online retailers requirements to improve efficency
+- Question Bank
+  - Team project (Agile Scrum environment)
+  - Web application where students can generate an take tests using given category filters to study for their exams
+  - Personal contributions (Backend Developer)
+    - Database design and management
+    - Connecting MySQL database to frontend interface using Python Flask
