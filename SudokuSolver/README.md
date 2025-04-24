@@ -1,10 +1,9 @@
-# DAA_Projects
-## Sudoku Solver Using SAT4J
+# Sudoku Solver Using SAT4J
 
-### Project State:
+## Project State:
 - Tested with all given input files and the program returned the correct output for all.
 
-### Classes:
+## Classes:
 - Main:
   - Contains driver method to solve a sudoku board given in a file. Appropriate objects of other classes are created and their methods are called to run the program inside a loop that continues asking for files until the user wants to stop.
 - SATSolver:
